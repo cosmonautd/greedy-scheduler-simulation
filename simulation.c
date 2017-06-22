@@ -4,10 +4,10 @@
 
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
-#define SIMULATION_TIME 2
-#define JOB_RATE 2
-#define MAX_JOB_DURATION 60
-#define N_WORKERS 4
+#define SIMULATION_TIME 60      // Duração da simulação em segundos
+#define JOB_RATE 2              // Taxa de surgimento de jobs em kHz
+#define MAX_JOB_DURATION 20     // Máxima duração de um job em centésimos de segundo
+#define N_WORKERS 24            // Número de workers no sistema distribuído
 
 struct Job {
 	int duration;
@@ -25,6 +25,18 @@ int roundrobin(struct Job job) {
 	return 0;
 }
 
+void debug_workers(struct Worker** workers) {
+    int i, j;
+    for(i=0; i < N_WORKERS; i++) {
+        printf("Worker %d: %d\n", i, workers[i]->queuelen);
+        for(j=0; j < workers[i]->queuelen; j++) {
+            printf("[%d %d] ", workers[i]->jobqueue[j].start, workers[i]->jobqueue[j].end);
+        }
+        printf("\n");
+    }
+    getchar();
+}
+
 int get_next_available_time(struct Job job, struct Worker* worker, int current_time, int* test_job_position) {
 
 	int id;
@@ -36,7 +48,7 @@ int get_next_available_time(struct Job job, struct Worker* worker, int current_t
 		return job.deadline - job.duration;
 	}
 
-	for(id=queuelen-1; id > 0 && id < queuelen; id--) {
+	for(id=queuelen-1; id > 0; id--) {
 		int deadline_restriction = MIN(job.deadline, jobqueue[id].start);
 		if(jobqueue[id-1].end + job.duration <= deadline_restriction) {
 			*test_job_position = id;
@@ -56,7 +68,7 @@ int get_next_available_time(struct Job job, struct Worker* worker, int current_t
 void add_job(struct Job* job, struct Worker** workers, int worker_id, int worker_time, int job_position) {
 
 	int i;
-	for(i=job_position; i < workers[worker_id]->queuelen; i++) {
+	for(i=workers[worker_id]->queuelen-1; i >= job_position; i--) {
 		workers[worker_id]->jobqueue[i+1].start = workers[worker_id]->jobqueue[i].start;
 		workers[worker_id]->jobqueue[i+1].end = workers[worker_id]->jobqueue[i].end;
 		workers[worker_id]->jobqueue[i+1].duration = workers[worker_id]->jobqueue[i].duration;
@@ -78,7 +90,7 @@ void remove_job(struct Worker** workers, int worker_id) {
 		workers[worker_id]->jobqueue[i-1].duration = workers[worker_id]->jobqueue[i].duration;
 		workers[worker_id]->jobqueue[i-1].deadline = workers[worker_id]->jobqueue[i].deadline;
 	}
-	workers[worker_id]->queuelen += 1;
+	workers[worker_id]->queuelen -= 1;
 }
 
 int greedy(struct Job job, struct Worker** workers, int current_time) {
@@ -99,7 +111,7 @@ int greedy(struct Job job, struct Worker** workers, int current_time) {
 		}
 	}
 
-	if(best_worker_id != -1 && (new_job_position) != -1) {
+	if(best_worker_id != -1 && new_job_position != -1) {
 		add_job(&job, workers, best_worker_id, best_worker_time, new_job_position);
 		return 0;
 	} else return 1;
@@ -122,25 +134,25 @@ void main() {
 	for(n=0; n < N_WORKERS; n++) {
 		greedy_workers[n] = malloc(sizeof(struct Worker));
 		greedy_workers[n]->queuelen = 0;
-		greedy_workers[n]->jobqueue = malloc(JOB_RATE*60*SIMULATION_TIME*sizeof(struct Job));
+		greedy_workers[n]->jobqueue = malloc(JOB_RATE*100*SIMULATION_TIME*sizeof(struct Job));
 	}
 
 	// Início da simulação
 	int t;
-	for(t=0; t < 60*SIMULATION_TIME - MAX_JOB_DURATION; t++) {
+	for(t=0; t < 100*SIMULATION_TIME - MAX_JOB_DURATION; t++) {
 
-		printf("Time: %d\n", t);
+		//printf("Time: %d\n", t);
 
 		// Gerar jobs aleatórios
 		int i, j;
 		struct Job* newjobs = malloc(JOB_RATE*sizeof(struct Job));
 		for(i=0; i < JOB_RATE; i++) {
 			int random_duration = (rand() % MAX_JOB_DURATION) + 1;
-			int random_deadline = (t + random_duration) + (rand() % (60*SIMULATION_TIME - MAX_JOB_DURATION - t)) + 1;
+			int random_deadline = (t + random_duration) + (rand() % (2*MAX_JOB_DURATION)) + 1;
 			struct Job random_job = {random_duration, random_deadline};
 			newjobs[i] = random_job;
 
-			printf("Random duration: %2d, Random deadline %4d\n", random_duration, random_deadline);
+			//printf("Random duration: %2d, Random deadline %4d\n", random_duration, random_deadline);
 		}
 
 		// Tenta adicionar os jobs e atualiza a contagem de jobs recusados
@@ -150,19 +162,10 @@ void main() {
 		}
 
 		for(i=0; i < N_WORKERS; i++) {
-			printf("Worker %d: %d\n", i, greedy_workers[i]->queuelen);
-			for(j=0; j < greedy_workers[i]->queuelen; j++) {
-				printf("[%d %d] ", greedy_workers[i]->jobqueue[j].start, greedy_workers[i]->jobqueue[j].end);
-			}
-			printf("\n");
-
-			if(greedy_workers[i]->queuelen > 0 && greedy_workers[i]->jobqueue[0].end < t + 1) remove_job(greedy_workers, i);
+			if(greedy_workers[i]->queuelen > 0 && greedy_workers[i]->jobqueue[0].end < t) remove_job(greedy_workers, i);
 		}
-
-		getchar();
 	}
 
-	printf("\n");
-	printf("Round-Robin refused jobs: %.2f%%\n", 100*(roundrobin_count/(double)((60*SIMULATION_TIME - MAX_JOB_DURATION)*JOB_RATE)));
-	printf("Greedy refused jobs: %.2f%%\n", 100*(greedy_count/(double)((60*SIMULATION_TIME - MAX_JOB_DURATION)*JOB_RATE)));
+	printf("Round-Robin refused jobs: %.2f%%\n", 100*(roundrobin_count/(double)((100*SIMULATION_TIME - MAX_JOB_DURATION)*JOB_RATE)));
+	printf("Greedy refused jobs: %.2f%%\n", 100*(greedy_count/(double)((100*SIMULATION_TIME - MAX_JOB_DURATION)*JOB_RATE)));
 }
