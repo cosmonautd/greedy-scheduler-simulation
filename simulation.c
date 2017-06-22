@@ -25,7 +25,8 @@ int roundrobin(struct Job job) {
 	return 0;
 }
 
-void debug_workers(struct Worker** workers) {
+void greedy_debug_workers(struct Worker** workers) {
+	/* Imprime o conteúdo das listas de workers greedy */
     int i, j;
     for(i=0; i < N_WORKERS; i++) {
         printf("Worker %d: %d\n", i, workers[i]->queuelen);
@@ -37,7 +38,11 @@ void debug_workers(struct Worker** workers) {
     getchar();
 }
 
-int get_next_available_time(struct Job job, struct Worker* worker, int current_time, int* test_job_position) {
+int greedy_next_available_time(struct Job job, struct Worker* worker, int current_time, int* test_job_position) {
+
+	/* Retorna o momento em que o worker pode realizar o job, respeitando
+	   a estratégia gulosa de que o job deve ser executado o mais tarde possível,
+	   mas antes de sua deadline */
 
 	int id;
 	int queuelen = worker->queuelen;
@@ -65,7 +70,10 @@ int get_next_available_time(struct Job job, struct Worker* worker, int current_t
 	return -1;
 }
 
-void add_job(struct Job* job, struct Worker** workers, int worker_id, int worker_time, int job_position) {
+void greedy_add_job(struct Job* job, struct Worker** workers, int worker_id, int worker_time, int job_position) {
+
+	/* Adiciona o job à lista de jobs do worker especificado, na posição especificada,
+	   move os jobs à direita de job_position uma cada para a direita */
 
 	int i;
 	for(i=workers[worker_id]->queuelen-1; i >= job_position; i--) {
@@ -82,7 +90,9 @@ void add_job(struct Job* job, struct Worker** workers, int worker_id, int worker
 	workers[worker_id]->queuelen += 1;
 }
 
-void remove_job(struct Worker** workers, int worker_id) {
+void greedy_remove_job(struct Worker** workers, int worker_id) {
+
+	/* Remove o primeiro job da lista de jobs de um worker */
 	int i;
 	for(i=1; i < workers[worker_id]->queuelen; i++) {
 		workers[worker_id]->jobqueue[i-1].start = workers[worker_id]->jobqueue[i].start;
@@ -95,6 +105,9 @@ void remove_job(struct Worker** workers, int worker_id) {
 
 int greedy(struct Job job, struct Worker** workers, int current_time) {
 
+	/* Retorna 1 se o job foi recusado, 0 se foi aceito */
+
+	/* Inicialização de variáveis */
 	int id;
 	int best_worker_id = -1;
 	int best_worker_time = 0;
@@ -102,8 +115,12 @@ int greedy(struct Job job, struct Worker** workers, int current_time) {
 	*test_job_position = -1;
 	int new_job_position = -1;
 
+	/* Envia as informações do novo job para todos os workers e obtém de cada
+	   um o tempo em que este pode realizar o trabalho. Seleciona o worker que
+	   pode executar o job o mais tarde possível */
+
 	for(id=0; id < N_WORKERS; id++) {
-		int worker_time = get_next_available_time(job, workers[id], current_time, test_job_position);
+		int worker_time = greedy_next_available_time(job, workers[id], current_time, test_job_position);
 		if(worker_time != -1 && best_worker_time < worker_time) {
 			best_worker_time = worker_time;
 			best_worker_id = id;
@@ -111,16 +128,21 @@ int greedy(struct Job job, struct Worker** workers, int current_time) {
 		}
 	}
 
+	/* Se um worker tiver sido selecionado, adiciona o job à lista de jobs
+	   do worker selecionado. Caso nenhum worker possa realizar a tarefa,
+	   indica que o job foi recusado */
 	if(best_worker_id != -1 && new_job_position != -1) {
-		add_job(&job, workers, best_worker_id, best_worker_time, new_job_position);
+		greedy_add_job(&job, workers, best_worker_id, best_worker_time, new_job_position);
 		return 0;
 	} else return 1;
 }
 
 void main() {
 
+	// Iniciar gerador aleatório
 	srand(time(NULL));
 
+	// Inicializar contadores de jobs recusados para cada estratégia
 	int roundrobin_count = 0;
 	int greedy_count = 0;
 
@@ -137,13 +159,20 @@ void main() {
 		greedy_workers[n]->jobqueue = malloc(JOB_RATE*100*SIMULATION_TIME*sizeof(struct Job));
 	}
 
-	// Início da simulação
+	/* 	Início da simulação
+		Cada valor de t representa um intervalo de tempo de 0.01 segundo
+		O sistema distribuído aceita processar pedidos de jobs até uma quantidade
+		MAX_JOB_DURATION de segundos antes do fim da simulação */
 	int t;
 	for(t=0; t < 100*SIMULATION_TIME - MAX_JOB_DURATION; t++) {
 
 		//printf("Time: %d\n", t);
 
-		// Gerar jobs aleatórios
+		/* Gerar jobs aleatórios
+		 A cada 0.01 segundo, o sistema distribuído recebe uma quantidade
+		 JOB_RATE de novos jobs. Assim, o valor JOB_RATE indica a frêquencia de
+		 novos jobs em kHz. Cada novo job aleatório pode ter duração entre 1 e
+		 MAX_JOB_DURATION e deadline máxima para até 2 vezes depois que sua duração */
 		int i, j;
 		struct Job* newjobs = malloc(JOB_RATE*sizeof(struct Job));
 		for(i=0; i < JOB_RATE; i++) {
@@ -155,14 +184,15 @@ void main() {
 			//printf("Random duration: %2d, Random deadline %4d\n", random_duration, random_deadline);
 		}
 
-		// Tenta adicionar os jobs e atualiza a contagem de jobs recusados
+		// Tenta submeter os jobs e atualiza a contagem de jobs recusados
 		for(i=0; i < JOB_RATE; i++) {
 			roundrobin_count += roundrobin(newjobs[i]);
 			greedy_count += greedy(newjobs[i], greedy_workers, t);
 		}
 
+		// Remove os jobs finalizados das listas de execução dos workers
 		for(i=0; i < N_WORKERS; i++) {
-			if(greedy_workers[i]->queuelen > 0 && greedy_workers[i]->jobqueue[0].end < t) remove_job(greedy_workers, i);
+			if(greedy_workers[i]->queuelen > 0 && greedy_workers[i]->jobqueue[0].end < t) greedy_remove_job(greedy_workers, i);
 		}
 	}
 
