@@ -7,7 +7,7 @@
 #define SIMULATION_TIME 60      // Duração da simulação em segundos
 #define JOB_RATE 2              // Taxa de surgimento de jobs em kHz
 #define MAX_JOB_DURATION 20     // Máxima duração de um job em centésimos de segundo
-#define N_WORKERS 24            // Número de workers no sistema distribuído
+#define N_WORKERS 1            // Número de workers no sistema distribuído
 
 struct Job {
 	int duration;
@@ -16,13 +16,80 @@ struct Job {
 	int end;
 };
 
+typedef struct list List;
+
+struct list {
+	struct Job job;
+	List *prox;
+};
+
+
 struct Worker {
 	int queuelen;
 	struct Job* jobqueue;
+	List* jobs_list; // para Round-Robin
 };
 
-int roundrobin(struct Job job) {
-	return 0;
+List* lst_cria();
+
+int lst_vazia(List *l);
+
+List* lst_insere(List *l, struct Job info);
+
+void lst_imprime_rec(List* l);
+
+struct Job lst_last_element(List* l);
+
+//cria um vetor circular para estratégia do round robin
+//Ex.: entrada = 6 -> [ 6 7 8 ... N_WORKERS 0 1 2 3 4 5  ]
+void create_vet_seq(int* vet,int start){
+	int a;
+	int cont = start;
+	for(a=0; a < N_WORKERS; a++){
+		vet[a] = cont;
+		cont++;
+		if(cont == N_WORKERS)
+			cont=0;
+	}
+}
+
+int last_work = -1;
+
+int roundrobin(struct Worker* robin_workers,struct Job job, int t) {
+	int* seq = (int*) malloc(N_WORKERS*sizeof(int));
+	if(last_work == N_WORKERS -1)
+		last_work = -1;
+	create_vet_seq(seq, last_work + 1 );
+	int i;
+
+	for (i = 0; i < N_WORKERS; i++) {
+		if ( robin_workers[ seq[i] ].jobs_list == NULL ) {
+			job.start= t; job.end= t + job.duration;
+			robin_workers[ seq[i] ].jobs_list = lst_insere(robin_workers[ seq[i] ].jobs_list,job);
+
+			last_work = seq[i];
+			return 0;
+		}else{
+			struct Job last_job = lst_last_element(robin_workers[ seq[i] ].jobs_list);
+
+			if(last_job.end + job.duration <= job.deadline  && last_job.end + job.duration < 100*SIMULATION_TIME){
+				if(last_job.end > t){
+					job.start= last_job.end +1;
+				}else{
+					job.start= t;
+				}
+
+				job.end= job.start + job.duration;
+				robin_workers[ seq[i] ].jobs_list = lst_insere(robin_workers[ seq[i] ].jobs_list,job);
+
+				last_work = seq[i];
+				return 0;
+			}
+		}
+	}
+
+
+	return 1;
 }
 
 void greedy_debug_workers(struct Worker** workers) {
@@ -148,7 +215,10 @@ void main() {
 
 	// Inicializar listas de jobs dos workers roundrobin
 	/* Coisas do Isaac */
+	// Inicializar listas dos workers roundrobin
+	struct Worker* robin_workers = malloc(N_WORKERS*sizeof(struct Worker));
 
+	//coisas do david
 	// Inicializar listas de jobs dos workers greedy
 	struct Worker** greedy_workers = malloc(N_WORKERS*sizeof(struct Worker*));
 
@@ -164,7 +234,7 @@ void main() {
 		O sistema distribuído aceita processar pedidos de jobs até uma quantidade
 		MAX_JOB_DURATION de segundos antes do fim da simulação */
 	int t;
-	for(t=0; t < 100*SIMULATION_TIME - MAX_JOB_DURATION; t++) {
+	for(t=0; t < 20/*00*SIMULATION_TIME - MAX_JOB_DURATION */; t++) {
 
 		//printf("Time: %d\n", t);
 
@@ -186,7 +256,7 @@ void main() {
 
 		// Tenta submeter os jobs e atualiza a contagem de jobs recusados
 		for(i=0; i < JOB_RATE; i++) {
-			roundrobin_count += roundrobin(newjobs[i]);
+			roundrobin_count += roundrobin(robin_workers,newjobs[i],t);
 			greedy_count += greedy(newjobs[i], greedy_workers, t);
 		}
 
@@ -195,7 +265,55 @@ void main() {
 			if(greedy_workers[i]->queuelen > 0 && greedy_workers[i]->jobqueue[0].end < t) greedy_remove_job(greedy_workers, i);
 		}
 	}
+	int i;
+
+
+	for(i=0; i<N_WORKERS; i++){
+		printf("\n\n\n jobs do worker %d \n\n",i );
+		lst_imprime_rec(robin_workers[i].jobs_list);
+
+	}
 
 	printf("Round-Robin refused jobs: %.2f%%\n", 100*(roundrobin_count/(double)((100*SIMULATION_TIME - MAX_JOB_DURATION)*JOB_RATE)));
 	printf("Greedy refused jobs: %.2f%%\n", 100*(greedy_count/(double)((100*SIMULATION_TIME - MAX_JOB_DURATION)*JOB_RATE)));
+}
+
+
+/* Cria uma lista vazia.*/
+List* lst_cria(){
+	return NULL;
+}
+
+/* Testa se uma lista é vazia.*/
+int lst_vazia(List *l){
+	return (l==NULL);
+}
+
+/* Insere um elemento no inicio da lista.*/
+List* lst_insere(List *l, struct Job info){
+	List* ln = (List*)malloc(sizeof(List));
+	ln->job = info;
+	ln->prox = l;
+	return ln;
+}
+
+
+struct Job lst_last_element(List* l){
+	List* lAux = l;
+	return lAux->job;
+}
+
+
+void lst_imprime_rec(List* l){
+	if(lst_vazia(l)){
+		return;
+	}else{
+			printf("job\n");
+			printf("job duration: %d\n",l->job.duration);
+			printf("job deadline: %d\n",l->job.deadline);
+			printf("job start: %d\n",l->job.start);
+			printf("job end: %d\n",l->job.end);
+
+			lst_imprime_rec(l->prox);
+	}
 }
