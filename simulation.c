@@ -5,9 +5,9 @@
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
 #define SIMULATION_TIME 60      // Duração da simulação em segundos
-#define JOB_RATE 2              // Taxa de surgimento de jobs em kHz
-#define MAX_JOB_DURATION 20     // Máxima duração de um job em centésimos de segundo
-#define N_WORKERS 1            // Número de workers no sistema distribuído
+#define JOB_RATE 12              // Taxa de surgimento de jobs em kHz
+#define MAX_JOB_DURATION 1000     // Máxima duração de um job em centésimos de segundo
+#define N_WORKERS 24            // Número de workers no sistema distribuído
 
 struct Job {
 	int duration;
@@ -268,11 +268,11 @@ void main() {
 	int i;
 
 
-	for(i=0; i<N_WORKERS; i++){
+	/*for(i=0; i<N_WORKERS; i++){
 		printf("\n\n\n jobs do worker %d \n\n",i );
 		lst_imprime_rec(robin_workers[i].jobs_list);
 
-	}
+	}*/
 
 	printf("Round-Robin refused jobs: %.2f%%\n", 100*(roundrobin_count/(double)((100*SIMULATION_TIME - MAX_JOB_DURATION)*JOB_RATE)));
 	printf("Greedy refused jobs: %.2f%%\n", 100*(greedy_count/(double)((100*SIMULATION_TIME - MAX_JOB_DURATION)*JOB_RATE)));
